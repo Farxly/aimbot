@@ -1,0 +1,264 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser") -- Service untuk Anti-AFK
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+
+-- ================================================
+-- ANTI AFK SYSTEM
+-- ================================================
+player.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+    print("💤 Anti-AFK Triggered")
+end)
+
+local config = {
+    scanOnStart = true,           -- Auto scan on start
+    teleportDelay = 0,            -- 0 delay between teleports
+    teleportHeight = 2,           -- Minimum height
+    showNotifications = true,     -- Quick notifications
+    sortByDistance = true,        -- Sort by proximity
+    loopDelay = 3                 -- Delay untuk auto repeat (3 detik)
+}
+
+-- State
+local keycaps = {}
+local isTeleporting = false
+local scanCompleted = false
+local autoLoopEnabled = false -- Status Auto Loop
+
+local function ultraFastScan()
+    keycaps = {}
+    scanCompleted = false
+    
+    -- Look for keycaps folder
+    local keycapsFolder = workspace:FindFirstChild("keycaps")
+    if not keycapsFolder then
+        warn("❌ 'keycaps' folder not found!")
+        return {}
+    end
+    
+    -- Ultra fast recursive scan
+    local function quickScan(folder)
+        for _, item in pairs(folder:GetChildren()) do
+            if item:IsA("BasePart") then
+                table.insert(keycaps, item)
+            elseif item:IsA("Folder") or item:IsA("Model") then
+                quickScan(item)
+            end
+        end
+    end
+    
+    quickScan(keycapsFolder)
+    
+    -- Sort by proximity for shortest path
+    if config.sortByDistance and #keycaps > 1 then
+        local sorted = {}
+        local currentPos = humanoidRootPart.Position
+        local remaining = {unpack(keycaps)}
+        
+        while #remaining > 0 do
+            local nearestIndex = 1
+            local nearestDist = (currentPos - remaining[1].Position).Magnitude
+            
+            for i = 2, #remaining do
+                local dist = (currentPos - remaining[i].Position).Magnitude
+                if dist < nearestDist then
+                    nearestDist = dist
+                    nearestIndex = i
+                end
+            end
+            
+            table.insert(sorted, remaining[nearestIndex])
+            currentPos = remaining[nearestIndex].Position
+            table.remove(remaining, nearestIndex)
+        end
+        
+        keycaps = sorted
+    end
+    
+    scanCompleted = true
+    return keycaps
+end
+
+local function instantTeleport()
+    if isTeleporting then return end
+    
+    -- Scan if not done yet or if keycaps is empty (re-scan for loop)
+    if #keycaps == 0 then
+        ultraFastScan()
+        if #keycaps == 0 then return end
+    end
+    
+    isTeleporting = true
+    
+    -- Teleport to ALL keycaps almost instantly
+    for i, keycap in ipairs(keycaps) do
+        -- Check if loop turned off mid-process (optional safety)
+        if not character or not character.Parent then break end
+
+        if keycap and keycap:IsA("BasePart") and keycap:IsDescendantOf(workspace) then
+            -- Quick position calculation
+            local teleportPos = keycap.Position + Vector3.new(0, keycap.Size.Y/2 + config.teleportHeight, 0)
+            
+            -- INSTANT teleport
+            humanoidRootPart.CFrame = CFrame.new(teleportPos)
+            
+            -- ZERO delay (or almost)
+            if i < #keycaps then
+                task.wait(config.teleportDelay)
+            end
+        end
+    end
+    
+    isTeleporting = false
+    
+    -- Quick notification (Only show if NOT in auto loop mode to avoid spam)
+    if config.showNotifications and not autoLoopEnabled then
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "✅ Complete",
+            Text = "Instant teleport finished!",
+            Duration = 1,
+            Icon = "rbxassetid://4483345998"
+        })
+    end
+end
+
+-- ================================================
+-- AUTO LOOP LOGIC
+-- ================================================
+task.spawn(function()
+    while true do
+        if autoLoopEnabled then
+            if not isTeleporting then
+                -- Re-scan before TP to make sure objects exist
+                ultraFastScan()
+                if #keycaps > 0 then
+                    instantTeleport()
+                end
+            end
+        end
+        task.wait(config.loopDelay) -- Tunggu 3 detik sebelum loop lagi
+    end
+end)
+
+-- ================================================
+-- UPDATED UI - TWO BUTTONS
+-- ================================================
+
+local teleportUI = nil
+
+local function createUI()
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "UltraFastTeleporter"
+    screenGui.Parent = player:WaitForChild("PlayerGui")
+    
+    -- Main container (Resized for 2 buttons)
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 140, 0, 85) -- Tinggi ditambah
+    mainFrame.Position = UDim2.new(0, 10, 0, 10)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.BorderSizePixel = 0
+    
+    -- Rounded Corners
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = mainFrame
+
+    -- Status Label
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, 0, 0, 15)
+    statusLabel.Position = UDim2.new(0, 0, 0, -20)
+    statusLabel.Text = "Anti-AFK Active"
+    statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.TextSize = 12
+    statusLabel.Font = Enum.Font.GothamBold
+    statusLabel.Name = "Status"
+    statusLabel.Parent = mainFrame
+    
+    -- [Button 1] Manual TP
+    local teleportButton = Instance.new("TextButton")
+    teleportButton.Size = UDim2.new(0.9, 0, 0.4, 0)
+    teleportButton.Position = UDim2.new(0.05, 0, 0.1, 0)
+    teleportButton.Text = "⚡ TP ONCE"
+    teleportButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+    teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    teleportButton.Font = Enum.Font.GothamBold
+    teleportButton.TextSize = 14
+    local btn1Corner = Instance.new("UICorner")
+    btn1Corner.CornerRadius = UDim.new(0, 6)
+    btn1Corner.Parent = teleportButton
+    
+    -- [Button 2] Auto Loop Toggle
+    local loopButton = Instance.new("TextButton")
+    loopButton.Size = UDim2.new(0.9, 0, 0.4, 0)
+    loopButton.Position = UDim2.new(0.05, 0, 0.55, 0)
+    loopButton.Text = "🔄 Auto: OFF"
+    loopButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Merah (Off)
+    loopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    loopButton.Font = Enum.Font.GothamBold
+    loopButton.TextSize = 14
+    local btn2Corner = Instance.new("UICorner")
+    btn2Corner.CornerRadius = UDim.new(0, 6)
+    btn2Corner.Parent = loopButton
+    
+    -- Add to screen
+    mainFrame.Parent = screenGui
+    teleportButton.Parent = mainFrame
+    loopButton.Parent = mainFrame
+    
+    -- Event: Manual Teleport
+    teleportButton.MouseButton1Click:Connect(function()
+        if not isTeleporting then
+            instantTeleport()
+        end
+    end)
+    
+    -- Event: Toggle Auto Loop
+    loopButton.MouseButton1Click:Connect(function()
+        autoLoopEnabled = not autoLoopEnabled
+        
+        if autoLoopEnabled then
+            loopButton.Text = "🔄 Auto: ON (3s)"
+            loopButton.BackgroundColor3 = Color3.fromRGB(0, 200, 0) -- Hijau (On)
+        else
+            loopButton.Text = "🔄 Auto: OFF"
+            loopButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50) -- Merah (Off)
+        end
+    end)
+    
+    return screenGui
+end
+
+-- ================================================
+-- KEYBOARD CONTROL
+-- ================================================
+
+local UserInputService = game:GetService("UserInputService")
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    
+    -- Press T for Manual TP
+    if input.KeyCode == Enum.KeyCode.T then
+        if not isTeleporting then
+            instantTeleport()
+        end
+    end
+end)
+
+-- ================================================
+-- INITIALIZATION
+-- ================================================
+
+-- Create UI
+createUI()
+
+print("======================================")
+print("⚡ ULTRA FAST KEYCAP TELEPORTER V2 ⚡")
+print("✅ Anti-AFK Active")
+print("✅ Auto Loop Feature Added")
+print("======================================")
