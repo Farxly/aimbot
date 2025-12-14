@@ -7,7 +7,7 @@ local config = {
     teleportHeight = 2,
     showNotifications = true,
     sortByDistance = true,
-    loopDelay = 1,           -- Jeda waktu antar loop
+    loopDelay = 0,           -- Jeda waktu antar loop
     autoLoopDefault = true,  -- [BARU] Langsung ON saat execute
     autoRejoin = true        -- [BARU] Auto rejoin jika DC
 }
