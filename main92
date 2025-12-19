@@ -1,0 +1,136 @@
+--[[
+    SILENT FARXLY | V19
+    - Rebranded from Solix to Silent Farxly.
+    - Features: Bullet TP (Behind Head), Speed Widget, WallCheck, Hitbox.
+]]
+
+local SilentFarxly = {
+    Settings = {
+        -- Combat
+        SilentAim = true,
+        BulletTP = true,       
+        WallCheck = true,
+        MaxDistance = 150,     
+        
+        -- Hitbox
+        HitboxExpand = false,
+        HitboxSize = 8,
+        HitboxInvisible = true,
+        FOV = 120,
+        
+        -- Speed
+        SpeedEnabled = false, -- Status Speed Fisik
+        SpeedAmount = 1,
+        ShowSpeedUI = false,  -- Status Munculnya Tombol Widget
+        
+        -- Visuals
+        ESP_Highlight = true,
+        ESP_Name = true,
+        Theme = Color3.fromRGB(170, 115, 255)
+    },
+    Variables = {
+        LocalPlayer = game:GetService("Players").LocalPlayer,
+        Camera = game:GetService("Workspace").CurrentCamera,
+        Target = nil
+    }
+}
+
+local Services = {
+    RunService = game:GetService("RunService"),
+    UserInput = game:GetService("UserInputService"),
+    Players = game:GetService("Players"),
+    Gui = game:GetService("CoreGui"),
+    Workspace = game:GetService("Workspace")
+}
+
+-- // 1. SPEED WIDGET (FLOATING UI) // --
+local SpeedWidget = nil
+local SpeedBtn = nil
+
+local function UpdateSpeedButtonVisual()
+    if SpeedBtn then
+        if SilentFarxly.Settings.SpeedEnabled then
+            SpeedBtn.BackgroundColor3 = Color3.fromRGB(50, 255, 50) -- Hijau (ON)
+            SpeedBtn.Text = "SPEED\nON"
+        else
+            SpeedBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50) -- Merah (OFF)
+            SpeedBtn.Text = "SPEED\nOFF"
+        end
+    end
+end
+
+local function ToggleSpeedWidget(Visible)
+    if Services.Gui:FindFirstChild("SilentFarxlySpeedWidget") then
+        Services.Gui.SilentFarxlySpeedWidget.Enabled = Visible
+    else
+        if Visible then
+            -- Create Widget
+            local Screen = Instance.new("ScreenGui")
+            Screen.Name = "SilentFarxlySpeedWidget"
+            Screen.Parent = Services.Gui
+            Screen.ResetOnSpawn = false
+            
+            local Btn = Instance.new("TextButton")
+            Btn.Name = "SpeedToggle"
+            Btn.Size = UDim2.new(0, 60, 0, 60)
+            Btn.Position = UDim2.new(0.9, -10, 0.4, 0) -- Posisi Kanan
+            Btn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+            Btn.Text = "SPEED\nOFF"
+            Btn.TextColor3 = Color3.new(1,1,1)
+            Btn.Font = Enum.Font.GothamBlack
+            Btn.TextSize = 11
+            Btn.Parent = Screen
+            Instance.new("UICorner", Btn).CornerRadius = UDim.new(0, 12)
+            Instance.new("UIStroke", Btn).Color = Color3.new(1,1,1)
+            Instance.new("UIStroke", Btn).Thickness = 2
+            
+            SpeedBtn = Btn
+            
+            -- Drag Logic
+            local dragging, dragInput, dragStart, startPos
+            Btn.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                    dragging = true; dragStart = input.Position; startPos = Btn.Position
+                    input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+                end
+            end)
+            Btn.InputChanged:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+            end)
+            Services.UserInput.InputChanged:Connect(function(input)
+                if input == dragInput and dragging then
+                    local delta = input.Position - dragStart
+                    Btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+                end
+            end)
+            
+            -- Toggle Function
+            Btn.MouseButton1Click:Connect(function()
+                SilentFarxly.Settings.SpeedEnabled = not SilentFarxly.Settings.SpeedEnabled
+                UpdateSpeedButtonVisual()
+            end)
+            
+            UpdateSpeedButtonVisual() -- Init state
+        end
+    end
+end
+
+-- // 2. BULLET TP (BEHIND HEAD) // --
+local function CFrameToOffset(origin, target)
+    local actual_origin = origin * CFrame.new(0, -1, 0, 1, 0, 0, 0, 0, 1, 0, -1, 0)
+    return actual_origin:ToObjectSpace(target):inverse()
+end
+
+local TP_Debounce = false
+
+local function TeleportBullet(Tool)
+    if TP_Debounce or not SilentFarxly.Variables.Target or not SilentFarxly.Variables.Target.Parent then return end
+    
+    local LP = SilentFarxly.Variables.LocalPlayer
+    local TargetPart = SilentFarxly.Variables.Target
+    
+    if TargetPart.Name ~= "Head" then
+        TargetPart = SilentFarxly.Variables.Target.Parent:FindFirstChild("Head")
+    end
+
+    local Hand = LP.Character and (LP.Character:FindFirstChild("RightHand") or LP.Character:F
